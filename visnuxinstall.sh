@@ -395,6 +395,12 @@ DOCUMENTATION_URL="https://visnux.duckdns.org/"
 LOGO=visnux
 EOF
 
+cat > /etc/lsb-release <<'EOF'
+DISTRIB_ID="Visnux"
+DISTRIB_RELEASE="rolling"
+DISTRIB_DESCRIPTION="Visnux Linux"
+EOF
+
 sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
