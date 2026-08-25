@@ -415,6 +415,7 @@ if [ "\${INIT_SYSTEM}" = "systemd" ]; then
         pacman -S plasma konsole dolphin xdg-desktop-portal-kde wl-clipboard kitty fastfetch sddm networkmanager neovim nano sudo power-profiles-daemon --noconfirm
         systemctl enable NetworkManager
         systemctl enable sddm --force
+        pacman -Rnsdd plasma-bigscreen --noconfirm
 
     elif [ "\${DESKTOP_ENV}" = "xfce" ]; then
         pacman -S xfce4 xfce4-whiskermenu-plugin xclip maim xfce4-pulseaudio-plugin kitty fastfetch sddm networkmanager neovim nano sudo power-profiles-daemon --noconfirm
