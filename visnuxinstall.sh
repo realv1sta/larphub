@@ -569,6 +569,12 @@ cp -r walls/visnux-walls/* /usr/share/backgrounds/visnux/
 cd ..
 rm -rf larphub
 
+fallocate -l 8G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
 echo 'GRUB_THEME=/boot/grub/themes/Office-sidebar/theme.txt' | tee -a /etc/default/grub
 grub-mkconfig -o /boot/grub/grub.cfg
 
