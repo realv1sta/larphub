@@ -117,14 +117,12 @@ while true; do
     ask "  1) systemd"
     ask "  2) dinit"
     ask "  3) openrc"
-    ask "  4) runit"
-    read -rp "  Choice [1-4]: " INIT_CHOICE
+    read -rp "  Choice [1-3]: " INIT_CHOICE
     case "$INIT_CHOICE" in
         1) INIT_SYSTEM="systemd"; break ;;
         2) INIT_SYSTEM="dinit"; break ;;
         3) INIT_SYSTEM="openrc"; break ;;
-        4) INIT_SYSTEM="runit"; break ;;
-        *) warn "Invalid choice. Enter 1, 2, 3, or 4." ;;
+        *) warn "Invalid choice. Enter 1, 2, or 3." ;;
     esac
 done
 echo ""
@@ -192,6 +190,17 @@ echo "    Init      : $INIT_SYSTEM"
 echo "    Desktop   : $DESKTOP_ENV"
 echo "    Multilib  : $ENABLE_MULTILIB"
 echo "    Hostname  : $NEW_HOSTNAME"
+echo ""
+echo -e "${CYAN}[INPUT]${NC} Do you want to install Visnux in a declarative way?"
+echo "  This installs VPK and uses /etc/visnux/visnux.conf."
+echo "  [y] Declarative (VPK)"
+echo "  [n] Traditional / imperative installer"
+read -rp "  Choice [y/N]: " DECLARATIVE_CHOICE
+if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
+    DECLARATIVE_MODE="yes"
+else
+    DECLARATIVE_MODE="no"
+fi
 echo ""
 read -rp "  Press ENTER to continue..."
 echo ""
@@ -273,7 +282,6 @@ EOF
     INIT_PKGS=""
     case "$INIT_SYSTEM" in
         openrc) INIT_PKGS="openrc elogind-openrc" ;;
-        runit)  INIT_PKGS="runit runit-rc elogind-runit" ;;
         dinit)  INIT_PKGS="dinit elogind-dinit" ;;
     esac
 
@@ -337,13 +345,16 @@ INIT_SYSTEM="${INIT_SYSTEM}"
 DESKTOP_ENV="${DESKTOP_ENV}"
 NEW_HOSTNAME="${NEW_HOSTNAME}"
 GRUB_DISK="${GRUB_DISK}"
+DECLARATIVE_MODE="${DECLARATIVE_MODE}"
 
 hwclock --systohc
 
-pacman -Sy --noconfirm git
-pacman -S --noconfirm ttf-iosevka-nerd ttf-adwaitamono-nerd
-pacman -S --noconfirm fish flatpak
-pacman -S --noconfirm papirus-icon-theme
+if [ "\${DECLARATIVE_MODE}" != "yes" ]; then
+    pacman -Sy --noconfirm git
+    pacman -S --noconfirm ttf-iosevka-nerd ttf-adwaitamono-nerd
+    pacman -S --noconfirm fish flatpak
+    pacman -S --noconfirm papirus-icon-theme
+fi
 mkdir -p /usr/share/icons/hicolor/scalable/apps/
 mkdir -p /usr/share/pixmaps/
 
@@ -378,6 +389,86 @@ echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
 # =============================================================================
 # Desktop / system packages
+# =============================================================================
+
+if [ "\${DECLARATIVE_MODE}" = "yes" ]; then
+    info "Declarative installation selected. Generating /etc/visnux/visnux.conf..."
+
+    mkdir -p /etc/visnux /var/lib/vpk
+    DESKTOP_METAPKGS=""
+    DESKTOP_PKGS=""
+    SERVICE_PKGS="networkmanager"
+    ENABLED_SERVICES="NetworkManager"
+    if [ "\${INIT_SYSTEM}" != "systemd" ]; then
+        SERVICE_PKGS="\${SERVICE_PKGS} turnstile"
+        if [ "\${INIT_SYSTEM}" = "openrc" ]; then
+            ENABLED_SERVICES="\${ENABLED_SERVICES} turnstile"
+        else
+            ENABLED_SERVICES="\${ENABLED_SERVICES} turnstiled"
+        fi
+    fi
+
+    if [ "\${DESKTOP_ENV}" = "kde" ]; then
+        DESKTOP_METAPKGS="plasma"
+        DESKTOP_PKGS="ark konsole dolphin xdg-desktop-portal-kde wl-clipboard"
+    elif [ "\${DESKTOP_ENV}" = "xfce" ]; then
+        DESKTOP_METAPKGS="xfce4"
+        DESKTOP_PKGS="xfce4-whiskermenu-plugin ark xclip maim xfce4-pulseaudio-plugin"
+    else
+        info "Skipping Desktop Environment installation."
+    fi
+
+    if [ "\${DESKTOP_ENV}" != "none" ]; then
+        SERVICE_PKGS="\${SERVICE_PKGS} sddm power-profiles-daemon pipewire wireplumber pipewire-pulse"
+        ENABLED_SERVICES="\${ENABLED_SERVICES} sddm power-profiles-daemon"
+    fi
+
+    cat > /etc/visnux/visnux.conf <<EOF
+# Visnux's configuration file
+
+[kernel]
+pkgs = { linux, linux-headers, linux-firmware, sof-firmware }
+
+[bootmgr]
+pkgs = { grub, efibootmgr }
+
+[desktop]
+metapkgs = { \${DESKTOP_METAPKGS} }
+pkgs = { \${DESKTOP_PKGS} }
+
+[fonts]
+pkgs = { ttf-iosevka-nerd, ttf-adwaitamono-nerd }
+
+[packages]
+pkgs = { git, papirus-icon-theme, neovim, nano, sudo, fish, flatpak, fastfetch, kitty }
+
+[services]
+pkgs = { \${SERVICE_PKGS} }
+enabled = { \${ENABLED_SERVICES} }
+
+[drivers]
+pkgs = { mesa, lib32-mesa, vulkan-intel, lib32-vulkan-intel, vulkan-radeon, lib32-vulkan-radeon, vulkan-nouveau, lib32-vulkan-nouveau, vulkan-swrast, lib32-vulkan-swrast, libva, intel-media-driver }
+
+# User example
+# [user:beamy]
+# groups = { wheel, audio, video, input }
+# shell = /usr/bin/fish
+# [user-services]
+# beamy = { pipewire, wireplumber, pipewire-pulse }
+
+# Do NOT change the init line. If you wanna switch inits, clean reinstall is the safest way to do so.
+init = \${INIT_SYSTEM}
+EOF
+
+    info "Fetching vpk from larphub..."
+    git clone https://github.com/realv1sta/larphub
+    cp larphub/vpk /usr/bin/vpk
+    chmod +x /usr/bin/vpk
+    rm -rf larphub
+
+    info "Synchronizing declarative package state..."
+    vpk sync
+else
 # =============================================================================
 
 if [ "\${INIT_SYSTEM}" = "systemd" ]; then
@@ -436,21 +527,6 @@ else
             fi
             ;;
 
-        runit)
-            mkdir -p /etc/runit/runsvdir/default
-            for service in dbus elogind NetworkManager turnstiled; do
-                if [ -d "/etc/runit/sv/\${service}" ] && [ ! -e "/etc/runit/runsvdir/default/\${service}" ]; then
-                    ln -sf "/etc/runit/sv/\${service}" "/etc/runit/runsvdir/default/\${service}"
-                fi
-            done
-            if [ "\${DESKTOP_ENV}" != "none" ] &&
-               [ -d "/etc/runit/sv/sddm" ] &&
-               [ ! -e "/etc/runit/runsvdir/default/sddm" ]; then
-                ln -sf /etc/runit/sv/sddm /etc/runit/runsvdir/default/sddm
-                ln -sf /etc/runit/sv/power-profiles-daemon /etc/runit/runsvdir/default/power-profiles-daemon
-            fi
-            ;;
-
         dinit)
             ln -sf ../dbus /etc/dinit.d/boot.d/
             ln -sf ../elogind /etc/dinit.d/boot.d/
@@ -465,9 +541,15 @@ else
 
 fi
 
+
+fi
 # =============================================================================
 # DRIVERS
 # =============================================================================
+
+if [ "\${DECLARATIVE_MODE}" = "yes" ]; then
+    info "Drivers are managed by VPK."
+else
 
 info "Installing mesa drivers for intel, amd and nouveau..."
 sudo pacman -S mesa lib32-mesa \
@@ -477,20 +559,28 @@ sudo pacman -S mesa lib32-mesa \
   vulkan-swrast lib32-vulkan-swrast \
   libva intel-media-driver --noconfirm --needed
 
+
+fi
 # =============================================================================
 # GRUB
 # =============================================================================
 
 info "Installing GRUB..."
-
-if [ "\${BOOT_MODE}" = "uefi" ]; then
-    pacman -S --noconfirm grub efibootmgr
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=visnux
+if [ "\${DECLARATIVE_MODE}" = "yes" ]; then
+    if [ "\${BOOT_MODE}" = "uefi" ]; then
+        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Visnux --recheck
+    else
+        grub-install --recheck "\${GRUB_DISK}"
+    fi
 else
-    pacman -S --noconfirm grub
-    grub-install --recheck "\${GRUB_DISK}"
+    if [ "\${BOOT_MODE}" = "uefi" ]; then
+        pacman -S --noconfirm grub efibootmgr
+        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Visnux --recheck
+    else
+        pacman -S --noconfirm grub
+        grub-install --recheck "\${GRUB_DISK}"
+    fi
 fi
-
 sed -i 's/GRUB_DISTRIBUTOR="Arch"/GRUB_DISTRIBUTOR="Visnux"/' /etc/default/grub
 sed -i 's/GRUB_DISTRIBUTOR="Artix"/GRUB_DISTRIBUTOR="Visnux"/' /etc/default/grub
 
@@ -567,6 +657,18 @@ if [[ "\${CREATE_USER}" =~ ^[Yy]$ ]]; then
     su - "\${NEW_USER}" -c "cd ~ && mkdir -p ~/.config && git clone https://github.com/beamyyl/maindots && cp -r maindots/* ~/.config/ && rm -rf maindots && [ ! -f ~/.config/fastfetch/config.jsonc ] || sed -i 's/\"top\": 2/\"top\": 1/' ~/.config/fastfetch/config.jsonc"
     info "Dotfiles installed successfully."
     info "User setup complete."
+
+    if [ "\${DECLARATIVE_MODE}" = "yes" ]; then
+        cat >> /etc/visnux/visnux.conf <<EOF
+
+[user:\${NEW_USER}]
+groups = { wheel, audio, video, input }
+shell = /usr/bin/fish
+EOF
+        info "Added '\${NEW_USER}' to /etc/visnux/visnux.conf."
+        info "VPK now owns the declarative state of this user."
+        vpk sync
+    fi
 
 elif [[ "\${CREATE_USER}" =~ ^[Nn]$ ]]; then
     info "Skipping user creation."
