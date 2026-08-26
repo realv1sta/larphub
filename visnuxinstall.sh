@@ -461,6 +461,7 @@ init = \${INIT_SYSTEM}
 EOF
 
     info "Fetching vpk from larphub..."
+    sudo pacman -Sy git --noconfirm
     git clone https://github.com/realv1sta/larphub
     cp larphub/vpk /usr/bin/vpk
     chmod +x /usr/bin/vpk
