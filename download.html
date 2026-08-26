@@ -33,17 +33,22 @@
             font-weight: bold;
             color: #000000;
         }
-        .mirror-links {
-            display: flex;
-            gap: 20px;
-        }
         a.download-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             color: #2563eb;
             text-decoration: none;
             font-size: 1.1rem;
         }
         a.download-item:hover {
             text-decoration: underline;
+        }
+        /* Styling for your custom PNG icon */
+        .download-icon {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
         }
     </style>
 </head>
@@ -53,10 +58,12 @@
 
     <div class="download-container">
         <div class="main-title">visnux 1.0.0</div>
-        <div class="mirror-links">
-            <!-- Replace 'YOUR_GOOGLE_DRIVE_LINK_HERE' and 'YOUR_MEGA_LINK_HERE' with your actual links -->
-            <a href="https://drive.google.com/file/d/10h2MPFx-bVDw7bFTQmTELsB6_pH5Oijb/view?usp=sharing" class="download-item" target="_blank">Drive Download</a>
-        </div>
+        
+        <!-- Replace 'YOUR_GOOGLE_DRIVE_LINK_HERE' with your actual link -->
+        <a href="https://drive.google.com/file/d/10h2MPFx-bVDw7bFTQmTELsB6_pH5Oijb/view?usp=sharing" class="download-item" target="_blank">
+            <img src="download.png" alt="Download Icon" class="download-icon">
+            Google Drive
+        </a>
     </div>
 
 </body>
