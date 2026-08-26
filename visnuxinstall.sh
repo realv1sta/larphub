@@ -105,6 +105,46 @@ fi
 echo ""
 
 # =============================================================================
+# Declarative mode selection
+# =============================================================================
+info "============================================================"
+info " INSTALL MODE"
+info "============================================================"
+echo ""
+
+echo -e "${CYAN}[INPUT]${NC} Do you want to install Visnux in a declarative way?"
+echo "  This installs VPK and uses /etc/visnux/visnux.conf."
+echo "  [y] Declarative (VPK)"
+echo "  [n] Traditional / imperative installer"
+read -rp "  Choice [y/N]: " DECLARATIVE_CHOICE
+USE_EXISTING_CONF="no"
+if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
+    DECLARATIVE_MODE="yes"
+
+    echo ""
+    ask "Do you want to use an already existing visnux.conf?"
+    ask "  1) Yes - located in this folder as visnux.conf"
+    ask "  2) No  - generate one from your answers below"
+    read -rp "  Choice [1/2]: " CONF_CHOICE
+    case "$CONF_CHOICE" in
+        1)
+            SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd)"
+            EXISTING_CONF="$SCRIPT_DIR/visnux.conf"
+            [ -f "$EXISTING_CONF" ] || die "No visnux.conf found at $EXISTING_CONF"
+            USE_EXISTING_CONF="yes"
+            info "Using existing visnux.conf: $EXISTING_CONF"
+            info "Desktop Environment selection will be skipped — it's defined in your visnux.conf."
+            ;;
+        *)
+            USE_EXISTING_CONF="no"
+            ;;
+    esac
+else
+    DECLARATIVE_MODE="no"
+fi
+echo ""
+
+# =============================================================================
 # Init selection
 # =============================================================================
 info "============================================================"
@@ -130,25 +170,29 @@ echo ""
 # =============================================================================
 # Desktop Environment selection
 # =============================================================================
-info "============================================================"
-info " DESKTOP ENVIRONMENT"
-info "============================================================"
-echo ""
+if [ "$USE_EXISTING_CONF" = "yes" ]; then
+    DESKTOP_ENV="(defined in visnux.conf)"
+else
+    info "============================================================"
+    info " DESKTOP ENVIRONMENT"
+    info "============================================================"
+    echo ""
 
-while true; do
-    ask "Desktop Environment?"
-    ask "  1) KDE Plasma"
-    ask "  2) Xfce4"
-    ask "  3) Skip installing a Desktop Environment"
-    read -rp "  Choice [1-3]: " DE_CHOICE
-    case "$DE_CHOICE" in
-        1) DESKTOP_ENV="kde"; break ;;
-        2) DESKTOP_ENV="xfce"; break ;;
-        3) DESKTOP_ENV="none"; break ;;
-        *) warn "Invalid choice. Enter 1, 2, or 3." ;;
-    esac
-done
-echo ""
+    while true; do
+        ask "Desktop Environment?"
+        ask "  1) KDE Plasma"
+        ask "  2) Xfce4"
+        ask "  3) Skip installing a Desktop Environment"
+        read -rp "  Choice [1-3]: " DE_CHOICE
+        case "$DE_CHOICE" in
+            1) DESKTOP_ENV="kde"; break ;;
+            2) DESKTOP_ENV="xfce"; break ;;
+            3) DESKTOP_ENV="none"; break ;;
+            *) warn "Invalid choice. Enter 1, 2, or 3." ;;
+        esac
+    done
+    echo ""
+fi
 
 # =============================================================================
 # Multilib
@@ -190,36 +234,6 @@ echo "    Init      : $INIT_SYSTEM"
 echo "    Desktop   : $DESKTOP_ENV"
 echo "    Multilib  : $ENABLE_MULTILIB"
 echo "    Hostname  : $NEW_HOSTNAME"
-echo ""
-echo -e "${CYAN}[INPUT]${NC} Do you want to install Visnux in a declarative way?"
-echo "  This installs VPK and uses /etc/visnux/visnux.conf."
-echo "  [y] Declarative (VPK)"
-echo "  [n] Traditional / imperative installer"
-read -rp "  Choice [y/N]: " DECLARATIVE_CHOICE
-USE_EXISTING_CONF="no"
-if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
-    DECLARATIVE_MODE="yes"
-
-    echo ""
-    ask "Do you want to use an already existing visnux.conf?"
-    ask "  1) Yes - located in this folder as visnux.conf"
-    ask "  2) No  - generate one from your answers above"
-    read -rp "  Choice [1/2]: " CONF_CHOICE
-    case "$CONF_CHOICE" in
-        1)
-            SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd)"
-            EXISTING_CONF="$SCRIPT_DIR/visnux.conf"
-            [ -f "$EXISTING_CONF" ] || die "No visnux.conf found at $EXISTING_CONF"
-            USE_EXISTING_CONF="yes"
-            info "Using existing visnux.conf: $EXISTING_CONF"
-            ;;
-        *)
-            USE_EXISTING_CONF="no"
-            ;;
-    esac
-else
-    DECLARATIVE_MODE="no"
-fi
 echo ""
 read -rp "  Press ENTER to continue..."
 echo ""
