@@ -130,25 +130,6 @@ done
 echo ""
 
 # =============================================================================
-# CachyOS Kernel selection
-# =============================================================================
-while true; do
-    ask "Do you want to use the CachyOS Kernel? (Y/n)"
-    read -rp "  Choice: " CACHYOS_KERNEL_CHOICE
-
-    if [[ "$CACHYOS_KERNEL_CHOICE" =~ ^[Yy]$ ]] || [ -z "$CACHYOS_KERNEL_CHOICE" ]; then
-        USE_CACHYOS_KERNEL="yes"
-        break
-    elif [[ "$CACHYOS_KERNEL_CHOICE" =~ ^[Nn]$ ]]; then
-        USE_CACHYOS_KERNEL="no"
-        break
-    else
-        warn "Please enter y or n."
-    fi
-done
-echo ""
-
-# =============================================================================
 # Desktop Environment selection
 # =============================================================================
 info "============================================================"
@@ -208,7 +189,6 @@ echo ""
 info "Configuration summary:"
 echo "    Boot mode : $BOOT_MODE"
 echo "    Init      : $INIT_SYSTEM"
-echo "    Cachy krnl: $USE_CACHYOS_KERNEL"
 echo "    Desktop   : $DESKTOP_ENV"
 echo "    Multilib  : $ENABLE_MULTILIB"
 echo "    Hostname  : $NEW_HOSTNAME"
@@ -233,11 +213,7 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     info "Installing base and the kernel..."
     pacman -Sy archlinux-keyring --noconfirm
 
-    if [ "$USE_CACHYOS_KERNEL" = "yes" ]; then
-        pacstrap /mnt base base-devel linux-firmware sof-firmware
-    else
-        pacstrap /mnt base base-devel linux linux-firmware sof-firmware
-    fi
+    pacstrap /mnt base base-devel linux linux-firmware sof-firmware
 
     info "Applying pacman tweaks to chroot..."
     sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /mnt/etc/pacman.conf
@@ -301,11 +277,7 @@ EOF
         dinit)  INIT_PKGS="dinit elogind-dinit" ;;
     esac
 
-    if [ "$USE_CACHYOS_KERNEL" = "yes" ]; then
-        pacstrap -C "$ARTIX_CONF" /mnt base base-devel linux-firmware sof-firmware artix-keyring artix-mirrorlist $INIT_PKGS
-    else
-        pacstrap -C "$ARTIX_CONF" /mnt base base-devel linux linux-firmware sof-firmware artix-keyring artix-mirrorlist $INIT_PKGS
-    fi
+    pacstrap -C "$ARTIX_CONF" /mnt base base-devel linux linux-firmware sof-firmware artix-keyring artix-mirrorlist $INIT_PKGS
 
     echo 'Server = https://mirrors.rit.edu/artixlinux/$repo/os/$arch' > /mnt/etc/pacman.d/mirrorlist
 
@@ -365,7 +337,6 @@ INIT_SYSTEM="${INIT_SYSTEM}"
 DESKTOP_ENV="${DESKTOP_ENV}"
 NEW_HOSTNAME="${NEW_HOSTNAME}"
 GRUB_DISK="${GRUB_DISK}"
-USE_CACHYOS_KERNEL="${USE_CACHYOS_KERNEL}"
 
 hwclock --systohc
 
@@ -492,31 +463,6 @@ else
             ;;
     esac
 
-fi
-
-# =============================================================================
-# CachyOS Kernel
-# =============================================================================
-
-if [ "\${USE_CACHYOS_KERNEL}" = "yes" ]; then
-    info "Installing CachyOS kernel..."
-
-    pacman-key --init
-    pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
-    pacman-key --lsign-key F3B607488DB35A47
-
-    pacman -U \
-        https://mirror.cachyos.org/repo/x86_64/cachyos/cachyos-keyring-20240331-1-any.pkg.tar.zst \
-        https://mirror.cachyos.org/repo/x86_64/cachyos/cachyos-mirrorlist-27-1-any.pkg.tar.zst \
-        --noconfirm
-
-    printf '%s\n' \
-        '[cachyos]' \
-        'Include = /etc/pacman.d/cachyos-mirrorlist' \
-        >> /etc/pacman.conf
-
-    pacman -Syy --noconfirm
-    pacman -S --noconfirm linux-cachyos linux-cachyos-headers linux-firmware --needed
 fi
 
 # =============================================================================
