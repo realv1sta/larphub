@@ -1,0 +1,587 @@
+#!/bin/bash
+# =============================================================================
+# vpk — Visnux Declarative Package Sync Tool
+# usage: vpk [sync | check] [--path /path/to/manifest]
+# =============================================================================
+
+set -euo pipefail
+
+MANIFEST="/etc/visnux/visnux.conf"
+ACTION="sync"
+STATE_DIR="/var/lib/vpk"
+PACKAGE_STATE="$STATE_DIR/packages.state"
+SERVICE_STATE="$STATE_DIR/services.state"
+USER_STATE="$STATE_DIR/users.state"
+USER_SERVICE_STATE="$STATE_DIR/user-services.state"
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+if [[ "$(id -u)" -ne 0 ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+        exec sudo "$0" "$@"
+    fi
+    echo -e "${RED}[FAIL]${NC} vpk must run as root."
+    exit 1
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        sync) ACTION="sync"; shift ;;
+        check|-c|--check) ACTION="check"; shift ;;
+        --path|-p)
+            [[ $# -ge 2 ]] || { echo -e "${RED}[FAIL]${NC} --path requires a manifest path."; exit 1; }
+            MANIFEST="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: vpk [sync|check] [--path /path/to/manifest]"
+            echo "  sync   Reconcile the manifest and run pacman -Syu first (default)."
+            echo "  check  Check declarative state without changing anything."
+            exit 0
+            ;;
+        --sync|-s)
+            echo -e "${RED}[FAIL]${NC} --sync is no longer a VPK command. Use: vpk sync"
+            exit 1
+            ;;
+        *) echo -e "${RED}[FAIL]${NC} Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+[[ -f "$MANIFEST" ]] || { echo -e "${RED}[FAIL]${NC} Manifest '$MANIFEST' not found!"; exit 1; }
+
+mkdir -p "$STATE_DIR"
+
+echo -e "${CYAN}[VPK]${NC} Reading manifest: $MANIFEST"
+
+if [[ "$ACTION" == "sync" ]]; then
+    echo -e "${CYAN}[UPGRADE]${NC} Running pacman -Syu..."
+    pacman -Syu --noconfirm
+fi
+
+INIT="systemd"
+declare -a DECLARED_PKGS=()
+declare -a META_PKGS=()
+declare -a SERVICE_PKGS=()
+declare -a ENABLED_SERVICES=()
+declare -A USERS=()
+declare -A USER_GROUPS=()
+declare -A USER_SHELLS=()
+declare -A USER_SERVICES=()
+
+trim() {
+    local x="$1"
+    x="${x#"${x%%[![:space:]]*}"}"
+    x="${x%"${x##*[![:space:]]}"}"
+    printf '%s' "$x"
+}
+
+parse_list() {
+    local body="$1" item
+    body="${body//,/ }"
+    read -ra _items <<< "$body"
+    for item in "${_items[@]}"; do
+        item="$(trim "$item")"
+        [[ -n "$item" ]] && printf '%s\n' "$item"
+    done
+}
+
+SECTION=""
+CURRENT_USER=""
+
+while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    line="$(trim "$line")"
+    [[ -z "$line" ]] && continue
+
+    if [[ "$line" =~ ^\[user:([^]]+)\]$ ]]; then
+        CURRENT_USER="${BASH_REMATCH[1]}"
+        SECTION="user"
+        USERS["$CURRENT_USER"]=1
+        continue
+    fi
+
+    if [[ "$line" =~ ^\[([^]]+)\]$ ]]; then
+        SECTION="${BASH_REMATCH[1]}"
+        CURRENT_USER=""
+        continue
+    fi
+
+    if [[ "$line" =~ ^init[[:space:]]*=[[:space:]]*([a-zA-Z0-9_-]+)$ ]]; then
+        INIT="${BASH_REMATCH[1]}"
+        continue
+    fi
+
+    if [[ "$SECTION" == "user" && -n "$CURRENT_USER" ]]; then
+        if [[ "$line" =~ ^groups[[:space:]]*=[[:space:]]*\{(.*)\}$ ]]; then
+            USER_GROUPS["$CURRENT_USER"]="${BASH_REMATCH[1]}"
+            continue
+        fi
+        if [[ "$line" =~ ^shell[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            USER_SHELLS["$CURRENT_USER"]="$(trim "${BASH_REMATCH[1]}")"
+            continue
+        fi
+    fi
+
+    if [[ "$SECTION" == "user-services" && "$line" =~ ^([^=]+)=[[:space:]]*\{(.*)\}$ ]]; then
+        user="$(trim "${BASH_REMATCH[1]}")"
+        USER_SERVICES["$user"]="${BASH_REMATCH[2]}"
+        continue
+    fi
+
+    if [[ "$line" =~ ^metapkgs[[:space:]]*=[[:space:]]*\{(.*)\}$ ]]; then
+        [[ "$SECTION" == "desktop" ]] || { echo -e "${RED}[FAIL]${NC} metapkgs is only valid in [desktop]."; exit 1; }
+        while IFS= read -r pkg; do [[ -n "$pkg" ]] && META_PKGS+=("$pkg"); done < <(parse_list "${BASH_REMATCH[1]}")
+        continue
+    fi
+
+    if [[ "$line" =~ ^pkgs[[:space:]]*=[[:space:]]*\{(.*)\}$ ]]; then
+        while IFS= read -r pkg; do
+            [[ -z "$pkg" ]] && continue
+            if [[ "$SECTION" == "services" ]]; then SERVICE_PKGS+=("$pkg"); else DECLARED_PKGS+=("$pkg"); fi
+        done < <(parse_list "${BASH_REMATCH[1]}")
+        continue
+    fi
+
+    if [[ "$SECTION" == "services" && "$line" =~ ^enabled[[:space:]]*=[[:space:]]*\{(.*)\}$ ]]; then
+        while IFS= read -r service; do
+            [[ -n "$service" ]] && ENABLED_SERVICES+=("$service")
+        done < <(parse_list "${BASH_REMATCH[1]}")
+    fi
+done < "$MANIFEST"
+
+case "$INIT" in
+    systemd|openrc|dinit) ;;
+    *) echo -e "${RED}[FAIL]${NC} Invalid init '$INIT'."; exit 1 ;;
+esac
+
+is_package() {
+    pacman -Qq "$1" &>/dev/null
+}
+is_group() {
+    pacman -Sg "$1" &>/dev/null
+}
+group_members() {
+    pacman -Sg "$1" | awk '{print $2}' | sort -u
+}
+declare -A desired_target_kind=()
+declare -A desired_group_members=()
+declare -A desired_install_pkg=()
+declare -a invalid_targets=()
+
+add_package_target() {
+    local target="$1"
+    [[ -n "$target" ]] || return
+    if is_package "$target" || pacman -Si "$target" &>/dev/null; then
+        desired_target_kind["$target"]="package"
+        desired_install_pkg["$target"]=1
+    else
+        invalid_targets+=("$target")
+    fi
+}
+add_meta_target() {
+    local target="$1"
+    [[ -n "$target" ]] || return
+    if ! is_group "$target"; then invalid_targets+=("$target"); return; fi
+    desired_target_kind["$target"]="group"
+    desired_group_members["$target"]="$(group_members "$target")"
+    while IFS= read -r member; do [[ -n "$member" ]] && desired_install_pkg["$member"]=1; done <<< "${desired_group_members[$target]}"
+}
+for pkg in "${DECLARED_PKGS[@]}"; do add_package_target "$pkg"; done
+for meta in "${META_PKGS[@]}"; do add_meta_target "$meta"; done
+for pkg in "${SERVICE_PKGS[@]}"; do
+    if [[ "$INIT" == "systemd" ]]; then add_package_target "$pkg"; else add_package_target "$pkg-$INIT"; fi
+done
+
+if [[ ${#invalid_targets[@]} -gt 0 ]]; then
+    echo -e "${RED}[FAIL]${NC} Unknown package/group target(s):"
+    printf '  ! %s\n' "${invalid_targets[@]}"
+    exit 1
+fi
+
+declare -a PREVIOUS_TARGETS=()
+if [[ -f "$PACKAGE_STATE" ]]; then
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && PREVIOUS_TARGETS+=("$line")
+    done < "$PACKAGE_STATE"
+fi
+
+MISSING_TARGETS=()
+MISSING_PACKAGES=()
+REMOVED_TARGETS=()
+REMOVED_PACKAGES=()
+
+declare -A missing_pkg=()
+for target in "${!desired_target_kind[@]}"; do
+    kind="${desired_target_kind[$target]}"
+    if [[ "$kind" == "group" ]]; then
+        missing=0
+        while IFS= read -r member; do
+            [[ -n "$member" ]] || continue
+            if ! is_package "$member"; then
+                missing=1
+                missing_pkg["$member"]=1
+            fi
+        done <<< "${desired_group_members[$target]}"
+        (( missing )) && MISSING_TARGETS+=("$target")
+    else
+        if ! is_package "$target"; then
+            MISSING_TARGETS+=("$target")
+            missing_pkg["$target"]=1
+        fi
+    fi
+done
+
+for pkg in "${!missing_pkg[@]}"; do
+    MISSING_PACKAGES+=("$pkg")
+done
+
+for entry in "${PREVIOUS_TARGETS[@]}"; do
+    [[ -n "$entry" ]] || continue
+
+    kind="package"
+    target="$entry"
+    members=""
+    IFS='|' read -r first second third <<< "$entry"
+    if [[ "$first" == "package" || "$first" == "group" ]]; then
+        kind="$first"
+        target="$second"
+        members="$third"
+    fi
+
+    if [[ -z "${desired_target_kind[$target]+x}" ]]; then
+        REMOVED_TARGETS+=("$target")
+        if [[ "$kind" == "group" ]]; then
+            while IFS= read -r member; do
+                [[ -n "$member" ]] || continue
+                if is_package "$member"; then
+                    REMOVED_PACKAGES+=("$member")
+                fi
+            done < <(tr ' ' '\n' <<< "$members")
+        elif is_package "$target"; then
+            REMOVED_PACKAGES+=("$target")
+        fi
+    elif [[ "$kind" == "group" && "${desired_target_kind[$target]}" == "group" ]]; then
+        current_members="${desired_group_members[$target]}"
+        while IFS= read -r member; do
+            [[ -n "$member" ]] || continue
+            if ! grep -qxF "$member" <<< "$current_members" && is_package "$member"; then
+                REMOVED_PACKAGES+=("$member")
+            fi
+        done < <(tr ' ' '\n' <<< "$members")
+    fi
+done
+
+declare -A unique_removed=()
+DEDUP_REMOVED_PACKAGES=()
+for pkg in "${REMOVED_PACKAGES[@]}"; do
+    [[ -n "$pkg" ]] || continue
+    if [[ -z "${unique_removed[$pkg]+x}" ]]; then
+        unique_removed["$pkg"]=1
+        DEDUP_REMOVED_PACKAGES+=("$pkg")
+    fi
+done
+REMOVED_PACKAGES=("${DEDUP_REMOVED_PACKAGES[@]}")
+
+if [[ ${#MISSING_TARGETS[@]} -gt 0 ]]; then
+    echo -e "${YELLOW}[ADD]${NC} ${#MISSING_TARGETS[@]} declared target(s) need installation:"
+    printf '  + %s\n' "${MISSING_TARGETS[@]}"
+fi
+if [[ ${#REMOVED_TARGETS[@]} -gt 0 ]]; then
+    echo -e "${YELLOW}[REMOVE]${NC} ${#REMOVED_TARGETS[@]} declared target(s) removed from manifest:"
+    printf '  - %s\n' "${REMOVED_TARGETS[@]}"
+fi
+
+if [[ "$ACTION" == "check" ]]; then
+    if [[ ${#MISSING_TARGETS[@]} -gt 0 || ${#REMOVED_TARGETS[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}[CHECK]${NC} Declarative package state differs from the manifest."
+        exit 1
+    fi
+fi
+
+if [[ "$ACTION" == "sync" ]]; then
+    if [[ ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
+        echo -e "${CYAN}[SYNC]${NC} Installing declared package/group members..."
+        pacman -S --needed --noconfirm "${MISSING_PACKAGES[@]}"
+    fi
+
+    if [[ ${#REMOVED_PACKAGES[@]} -gt 0 ]]; then
+        echo -e "${CYAN}[SYNC]${NC} Removing packages no longer declared..."
+        pacman -Rns --noconfirm "${REMOVED_PACKAGES[@]}"
+    fi
+
+    : > "$PACKAGE_STATE"
+    for target in "${!desired_target_kind[@]}"; do
+        if [[ "${desired_target_kind[$target]}" == "group" ]]; then
+            members="${desired_group_members[$target]}"
+            compact_members="$(tr '\n' ' ' <<< "$members" | sed 's/[[:space:]]*$//')"
+            printf 'group|%s|%s\n' "$target" "$compact_members" >> "$PACKAGE_STATE"
+        else
+            printf 'package|%s\n' "$target" >> "$PACKAGE_STATE"
+        fi
+    done
+    sort -o "$PACKAGE_STATE" "$PACKAGE_STATE"
+fi
+
+declare -A desired_user=()
+declare -A desired_groups=()
+declare -A desired_shell=()
+for user in "${!USERS[@]}"; do
+    desired_user["$user"]=1
+    desired_groups["$user"]="${USER_GROUPS[$user]-}"
+    desired_shell["$user"]="${USER_SHELLS[$user]-/usr/bin/bash}"
+done
+
+mapfile -t PREVIOUS_USERS < <(cat "$USER_STATE" 2>/dev/null | sort -u || true)
+USER_ADDED=()
+USER_REMOVED=()
+USER_CHANGED=()
+
+user_is_converged() {
+    local user="$1"
+    local wanted_shell="${desired_shell[$user]}"
+    local current_shell
+    current_shell="$(getent passwd "$user" | cut -d: -f7)"
+    [[ "$current_shell" == "$wanted_shell" ]] || return 1
+
+    local wanted_groups actual_groups
+    wanted_groups="$(parse_list "${desired_groups[$user]}")"
+    actual_groups="$(id -nG "$user" | tr ' ' '\n' | grep -vx "$(id -gn "$user")" | sort || true)"
+    wanted_groups="$(printf '%s\n' "$wanted_groups" | sed '/^[[:space:]]*$/d' | sort)"
+    [[ "$actual_groups" == "$wanted_groups" ]]
+}
+
+for user in "${!desired_user[@]}"; do
+    if ! id "$user" &>/dev/null; then
+        USER_ADDED+=("$user")
+    elif ! user_is_converged "$user"; then
+        USER_CHANGED+=("$user")
+    fi
+done
+for user in "${PREVIOUS_USERS[@]}"; do
+    [[ -n "$user" ]] || continue
+    if [[ -z "${desired_user[$user]+x}" ]] && id "$user" &>/dev/null; then
+        USER_REMOVED+=("$user")
+    fi
+done
+
+# Validate user-service references before changing anything.
+for user in "${!USER_SERVICES[@]}"; do
+    if [[ -z "${desired_user[$user]+x}" ]]; then
+        echo -e "${RED}[FAIL]${NC} User-services section references undeclared user '$user'."
+        exit 1
+    fi
+done
+
+if [[ "$ACTION" == "check" ]]; then
+    if [[ ${#MISSING_TARGETS[@]} -gt 0 || ${#REMOVED_TARGETS[@]} -gt 0 || ${#USER_ADDED[@]} -gt 0 || ${#USER_REMOVED[@]} -gt 0 || ${#USER_CHANGED[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}[CHECK]${NC} Declarative state differs from the manifest."
+        exit 1
+    fi
+    echo -e "${GREEN}[OK]${NC} Package and user state is present."
+    exit 0
+fi
+
+# Users are declarative too. VPK never deletes a home directory when a user is removed from the manifest; userdel is intentionally used without -r.
+for user in "${USER_ADDED[@]}"; do
+    shell="${desired_shell[$user]}"
+    groups="${desired_groups[$user]}"
+    [[ -x "$shell" ]] || { echo -e "${RED}[FAIL]${NC} Shell '$shell' for '$user' does not exist."; exit 1; }
+    args=(-m -s "$shell")
+    if [[ -n "$groups" ]]; then
+        mapfile -t gs < <(parse_list "$groups")
+        args+=( -G "$(IFS=,; echo "${gs[*]}")" )
+    fi
+    echo -e "${CYAN}[USER]${NC} Creating $user"
+    useradd "${args[@]}" "$user"
+done
+
+for user in "${USER_CHANGED[@]}"; do
+    shell="${desired_shell[$user]}"
+    groups="${desired_groups[$user]}"
+    [[ -x "$shell" ]] || { echo -e "${RED}[FAIL]${NC} Shell '$shell' for '$user' does not exist."; exit 1; }
+    usermod -s "$shell" "$user"
+    if [[ -n "$groups" ]]; then
+        mapfile -t gs < <(parse_list "$groups")
+        usermod -G "$(IFS=,; echo "${gs[*]}")" "$user"
+    else
+        usermod -G '' "$user"
+    fi
+done
+
+# System services
+
+service_enable() {
+    local service="$1"
+    case "$INIT" in
+        systemd)
+            systemctl enable "$service"
+            ;;
+        openrc)
+            rc-update add "$service" default
+            ;;
+        dinit)
+            mkdir -p /etc/dinit.d/boot.d
+            [[ -e "/etc/dinit.d/$service" ]] || return 0
+            ln -sfn "../$service" "/etc/dinit.d/boot.d/$service"
+            ;;
+    esac
+}
+
+service_disable() {
+    local service="$1"
+    case "$INIT" in
+        systemd) systemctl disable "$service" || true ;;
+        openrc) rc-update del "$service" default || true ;;
+        dinit) rm -f "/etc/dinit.d/boot.d/$service" ;;
+    esac
+}
+
+declare -A wanted_services=()
+for service in "${ENABLED_SERVICES[@]}"; do wanted_services["$service"]=1; done
+
+mapfile -t OLD_SERVICES < <(cat "$SERVICE_STATE" 2>/dev/null | sort -u || true)
+declare -A old_services=()
+for service in "${OLD_SERVICES[@]}"; do [[ -n "$service" ]] && old_services["$service"]=1; done
+
+service_is_enabled() {
+    local service="$1"
+    case "$INIT" in
+        systemd)
+            systemctl is-enabled --quiet "$service" 2>/dev/null
+            ;;
+        openrc)
+            rc-update show default 2>/dev/null | grep -Eq "(^|[[:space:]])${service}([[:space:]]|$)"
+            ;;
+        dinit)
+            [[ -L "/etc/dinit.d/boot.d/$service" ]]
+            ;;
+    esac
+}
+
+for service in "${!wanted_services[@]}"; do
+    if [[ -z "${old_services[$service]+x}" ]] || ! service_is_enabled "$service"; then
+        echo -e "${CYAN}[ENABLE]${NC} $service"
+        service_enable "$service"
+    fi
+done
+for service in "${!old_services[@]}"; do
+    if [[ -z "${wanted_services[$service]+x}" ]]; then
+        echo -e "${CYAN}[DISABLE]${NC} $service"
+        service_disable "$service"
+    fi
+done
+
+# User services
+
+user_service_enable() {
+    local user="$1" service="$2"
+    local home uid
+    home="$(getent passwd "$user" | cut -d: -f6)"
+    uid="$(id -u "$user")"
+
+    case "$INIT" in
+        systemd)
+            mkdir -p "$home/.config/systemd/user/default.target.wants"
+            if [[ -e "/usr/lib/systemd/user/$service.service" ]]; then
+                ln -sfn "/usr/lib/systemd/user/$service.service" \
+                    "$home/.config/systemd/user/default.target.wants/$service.service"
+            else
+                echo -e "${YELLOW}[WARN]${NC} systemd user unit '$service.service' not found for $user."
+            fi
+            chown -R "$user:$user" "$home/.config/systemd"
+            ;;
+        openrc)
+            mkdir -p "$home/.config/rc/runlevels/default"
+            if [[ -e "/etc/user/init.d/$service" ]]; then
+                ln -sfn "/etc/user/init.d/$service" "$home/.config/rc/runlevels/default/$service"
+            else
+                echo -e "${YELLOW}[WARN]${NC} OpenRC user service '$service' not found for $user."
+            fi
+            chown -R "$user:$user" "$home/.config/rc"
+            ;;
+        dinit)
+            local user_dinit_dir="$home/.config/dinit.d"
+            mkdir -p "$user_dinit_dir/boot.d"
+
+            local src=""
+            if [[ -e "/etc/dinit.d/user/$service" ]]; then
+                src="/etc/dinit.d/user/$service"
+            elif [[ -e "/usr/lib/dinit.d/user/$service" ]]; then
+                src="/usr/lib/dinit.d/user/$service"
+            elif [[ -e "$user_dinit_dir/$service" ]]; then
+                src="$user_dinit_dir/$service"
+            else
+                echo -e "${YELLOW}[WARN]${NC} dinit user service '$service' not found for $user."
+                return 1
+            fi
+
+            ln -sfn "$src" "$user_dinit_dir/boot.d/$service"
+            chown -R "$user:$user" "$home/.config/dinit.d"
+            ;;
+    esac
+}
+
+user_service_disable() {
+    local user="$1" service="$2"
+    local home
+    home="$(getent passwd "$user" 2>/dev/null | cut -d: -f6 || true)"
+    [[ -n "$home" ]] || return 0
+
+    case "$INIT" in
+        systemd) rm -f "$home/.config/systemd/user/default.target.wants/$service.service" ;;
+        openrc) rm -f "$home/.config/rc/runlevels/default/$service" ;;
+        dinit) rm -f "$home/.config/dinit.d/boot.d/$service" ;;
+    esac
+}
+
+mapfile -t OLD_USER_SERVICES < <(cat "$USER_SERVICE_STATE" 2>/dev/null || true)
+declare -A wanted_user_services=()
+declare -A old_user_services=()
+
+for user in "${!USER_SERVICES[@]}"; do
+    while IFS= read -r service; do
+        [[ -n "$service" ]] || continue
+        wanted_user_services["$user|$service"]=1
+    done < <(parse_list "${USER_SERVICES[$user]}")
+done
+for entry in "${OLD_USER_SERVICES[@]}"; do
+    [[ -n "$entry" ]] && old_user_services["$entry"]=1
+done
+
+declare -A reconciled_user_services=()
+for entry in "${!wanted_user_services[@]}"; do
+    user="${entry%%|*}"
+    service="${entry#*|}"
+
+    if [[ -n "${old_user_services[$entry]+x}" ]]; then
+        reconciled_user_services["$entry"]=1
+        continue
+    fi
+
+    echo -e "${CYAN}[USER ENABLE]${NC} $service for $user"
+    if user_service_enable "$user" "$service"; then
+        reconciled_user_services["$entry"]=1
+    fi
+done
+for entry in "${!old_user_services[@]}"; do
+    if [[ -z "${wanted_user_services[$entry]+x}" ]]; then
+        user="${entry%%|*}"
+        service="${entry#*|}"
+        if id "$user" &>/dev/null; then
+            echo -e "${CYAN}[USER DISABLE]${NC} $service for $user"
+            user_service_disable "$user" "$service"
+        fi
+    fi
+done
+
+for user in "${USER_REMOVED[@]}"; do
+    echo -e "${CYAN}[USER]${NC} Removing account $user (home directory is preserved)"
+    userdel "$user"
+done
+
+# Save state only after successful sync
+printf '%s\n' "${!wanted_services[@]}" | sort > "$SERVICE_STATE"
+printf '%s\n' "${!desired_user[@]}" | sort > "$USER_STATE"
+printf '%s\n' "${!reconciled_user_services[@]}" | sort > "$USER_SERVICE_STATE"
+
+echo -e "${GREEN}[OK]${NC} VPK reconciliation complete."
