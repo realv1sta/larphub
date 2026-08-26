@@ -312,6 +312,7 @@
         <div class="toc-title">Table of contents</div>
         <ul>
             <li>1. <a href="#intro">Hey, what is this?</a></li>
+            <li>1. <a href="#visnux">What is Visnux about??</a></li>
             <li>2. <a href="#usb">Flashing the USB</a></li>
             <li>3. <a href="#partition">Setting up your partitions</a></li>
             <li>4. <a href="#install-visnux">Install Visnux</a></li>
@@ -323,11 +324,14 @@
     <h2 id="intro">1. Hey, what is this?</h2>
     <p>Welcome to Visnux! If you're here, you probably grabbed the ISO and want to get it running on your machine. This page walks through the steps I use to set it up. It shouldn't take long.</p>
 
-    <h2 id="usb">2. Flashing the USB</h2>
+    <h2 id="visnux">2. What is Visnux About?</h2>
+    <p>Visnux is a Arch-Based Distro, that is light-weight and great for gaming, it features init freedom such as: systemd, runit, dinit, openrc and more stuff. The install script for it is <code>visnuxinstall</code>. Before running the script you should know how to partition your drives correctly.</p>
+
+    <h2 id="usb">3. Flashing the USB</h2>
     <p>First things first, burn that ISO to a spare flash drive. Plug it in, find out what letter your drive is (like <code>/dev/sdX</code>—just be careful not to pick your main hard drive!), and run this in your terminal:</p>
     <pre><code>sudo dd if=visnux-1.0.0.iso of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
 
-    <h2 id="partition">3. Setting up your partitions</h2>
+    <h2 id="partition">4. Setting up your partitions</h2>
     <p>Boot up from your USB. Depending on whether your PC is a bit older or newer, pick your setup below:</p>
 
     <!-- Tabs -->
@@ -356,10 +360,10 @@ mkfs.ext4 /dev/part
 mount /dev/part /mnt</code></pre>
     </div>
 
-    <h2 id="install-visnux">4. Install Visnux</h2>
+    <h2 id="install-visnux">5. Install Visnux</h2>
     <p>With your drives partitioned and successfully mounted to <code>/mnt</code>, you are ready to bootstrap the base system files onto your disk. Ensure your internet connection is stable so the necessary packages can sync up properly before you begin the final steps.</p>
 
-    <h2 id="run-installer">5. Running the installer</h2>
+    <h2 id="run-installer">6. Running the installer</h2>
     <p>Once everything is mounted and ready to roll, you don't have to mess with a bunch of manual scripts. Just type the magic word into your terminal:</p>
     
     <div class="note-box">
@@ -369,7 +373,7 @@ mount /dev/part /mnt</code></pre>
 
     <p>Reboot when it finishes, pull out the USB, and you should be good to go!</p>
 
-    <h2 id="credits">6. Credits</h2>
+    <h2 id="credits">7. Credits</h2>
     <p>Big thanks to the team behind Visnux:</p>
     <ul class="credits-list">
         <li><code>v1sta_.</code> — <strong>Owner</strong></li>
