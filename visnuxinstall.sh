@@ -196,8 +196,27 @@ echo "  This installs VPK and uses /etc/visnux/visnux.conf."
 echo "  [y] Declarative (VPK)"
 echo "  [n] Traditional / imperative installer"
 read -rp "  Choice [y/N]: " DECLARATIVE_CHOICE
+USE_EXISTING_CONF="no"
 if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
     DECLARATIVE_MODE="yes"
+
+    echo ""
+    ask "Do you want to use an already existing visnux.conf?"
+    ask "  1) Yes - located in this folder as visnux.conf"
+    ask "  2) No  - generate one from your answers above"
+    read -rp "  Choice [1/2]: " CONF_CHOICE
+    case "$CONF_CHOICE" in
+        1)
+            SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd)"
+            EXISTING_CONF="$SCRIPT_DIR/visnux.conf"
+            [ -f "$EXISTING_CONF" ] || die "No visnux.conf found at $EXISTING_CONF"
+            USE_EXISTING_CONF="yes"
+            info "Using existing visnux.conf: $EXISTING_CONF"
+            ;;
+        *)
+            USE_EXISTING_CONF="no"
+            ;;
+    esac
 else
     DECLARATIVE_MODE="no"
 fi
@@ -326,6 +345,19 @@ cat /mnt/etc/fstab
 echo ""
 
 # =============================================================================
+# Existing visnux.conf
+# =============================================================================
+if [ "$USE_EXISTING_CONF" = "yes" ]; then
+    info "============================================================"
+    info " EXISTING VISNUX.CONF"
+    info "============================================================"
+    info "Copying existing visnux.conf into the new system..."
+    mkdir -p /mnt/etc/visnux
+    cp "$EXISTING_CONF" /mnt/etc/visnux/visnux.conf
+    echo ""
+fi
+
+# =============================================================================
 # In-chroot script
 # =============================================================================
 info "============================================================"
@@ -346,6 +378,7 @@ DESKTOP_ENV="${DESKTOP_ENV}"
 NEW_HOSTNAME="${NEW_HOSTNAME}"
 GRUB_DISK="${GRUB_DISK}"
 DECLARATIVE_MODE="${DECLARATIVE_MODE}"
+USE_EXISTING_CONF="${USE_EXISTING_CONF}"
 
 hwclock --systohc
 
@@ -392,38 +425,42 @@ echo "LANG=en_US.UTF-8" > /etc/locale.conf
 # =============================================================================
 
 if [ "\${DECLARATIVE_MODE}" = "yes" ]; then
-    info "Declarative installation selected. Generating /etc/visnux/visnux.conf..."
-
     mkdir -p /etc/visnux /var/lib/vpk
-    DESKTOP_METAPKGS=""
-    DESKTOP_PKGS=""
-    SERVICE_PKGS="networkmanager"
-    ENABLED_SERVICES="NetworkManager"
-    if [ "\${INIT_SYSTEM}" != "systemd" ]; then
-        SERVICE_PKGS="\${SERVICE_PKGS} turnstile"
-        if [ "\${INIT_SYSTEM}" = "openrc" ]; then
-            ENABLED_SERVICES="\${ENABLED_SERVICES} turnstile"
-        else
-            ENABLED_SERVICES="\${ENABLED_SERVICES} turnstiled"
-        fi
-    fi
 
-    if [ "\${DESKTOP_ENV}" = "kde" ]; then
-        DESKTOP_METAPKGS="plasma"
-        DESKTOP_PKGS="ark konsole dolphin xdg-desktop-portal-kde wl-clipboard"
-    elif [ "\${DESKTOP_ENV}" = "xfce" ]; then
-        DESKTOP_METAPKGS="xfce4"
-        DESKTOP_PKGS="xfce4-whiskermenu-plugin ark xclip maim xfce4-pulseaudio-plugin"
+    if [ "\${USE_EXISTING_CONF}" = "yes" ]; then
+        info "Using existing /etc/visnux/visnux.conf."
     else
-        info "Skipping Desktop Environment installation."
-    fi
+        info "Declarative installation selected. Generating /etc/visnux/visnux.conf..."
 
-    if [ "\${DESKTOP_ENV}" != "none" ]; then
-        SERVICE_PKGS="\${SERVICE_PKGS} sddm power-profiles-daemon pipewire wireplumber pipewire-pulse"
-        ENABLED_SERVICES="\${ENABLED_SERVICES} sddm power-profiles-daemon"
-    fi
+        DESKTOP_METAPKGS=""
+        DESKTOP_PKGS=""
+        SERVICE_PKGS="networkmanager"
+        ENABLED_SERVICES="NetworkManager"
+        if [ "\${INIT_SYSTEM}" != "systemd" ]; then
+            SERVICE_PKGS="\${SERVICE_PKGS} turnstile"
+            if [ "\${INIT_SYSTEM}" = "openrc" ]; then
+                ENABLED_SERVICES="\${ENABLED_SERVICES} turnstile"
+            else
+                ENABLED_SERVICES="\${ENABLED_SERVICES} turnstiled"
+            fi
+        fi
 
-    cat > /etc/visnux/visnux.conf <<EOF
+        if [ "\${DESKTOP_ENV}" = "kde" ]; then
+            DESKTOP_METAPKGS="plasma"
+            DESKTOP_PKGS="ark konsole dolphin xdg-desktop-portal-kde wl-clipboard"
+        elif [ "\${DESKTOP_ENV}" = "xfce" ]; then
+            DESKTOP_METAPKGS="xfce4"
+            DESKTOP_PKGS="xfce4-whiskermenu-plugin ark xclip maim xfce4-pulseaudio-plugin"
+        else
+            info "Skipping Desktop Environment installation."
+        fi
+
+        if [ "\${DESKTOP_ENV}" != "none" ]; then
+            SERVICE_PKGS="\${SERVICE_PKGS} sddm power-profiles-daemon pipewire wireplumber pipewire-pulse"
+            ENABLED_SERVICES="\${ENABLED_SERVICES} sddm power-profiles-daemon"
+        fi
+
+        cat > /etc/visnux/visnux.conf <<EOF
 # Visnux's configuration file
 
 [kernel]
@@ -459,6 +496,7 @@ pkgs = { mesa, lib32-mesa, vulkan-intel, lib32-vulkan-intel, vulkan-radeon, lib3
 # Do NOT change the init line. If you wanna switch inits, clean reinstall is the safest way to do so.
 init = \${INIT_SYSTEM}
 EOF
+    fi
 
     info "Fetching vpk from larphub..."
     sudo pacman -Sy git --noconfirm
