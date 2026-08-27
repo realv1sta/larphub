@@ -264,6 +264,8 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     info "Ranking Arch mirrors..."
     rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist
         if [ "$ENABLE_MULTILIB" = "yes" ]; then
+        mkdir /mnt/etc -p
+        cp /etc/pacman.conf /mnt/etc/pacman.conf
         cat >> /mnt/etc/pacman.conf <<'EOF'
 [multilib]
 Include = /etc/pacman.d/mirrorlist
