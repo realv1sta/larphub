@@ -284,7 +284,7 @@ Include = /etc/pacman.d/mirrorlist-arch
 EOF
     fi
 
-    info "Installing mirror ranking utilities on host..."pacman-key --init
+    info "Installing mirror ranking utilities on host..."
     pacman-key --init
     pacman-key --populate archlinux
     pacman -Sy --noconfirm archlinux-keyring rate-mirrors
@@ -352,9 +352,6 @@ EOF
     info "Copying mirrorlists to the target system..."
     mkdir -p /mnt/etc/pacman.d
     cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
-    
-    rate-mirrors --allow-root arch > /etc/pacman.d/mirrorlist-arch
-    cp /etc/pacman.d/mirrorlist-arch /mnt/etc/pacman.d/mirrorlist-arch
 
     info "Applying pacman cosmetic tweaks to chroot..."
     sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /mnt/etc/pacman.conf
