@@ -260,8 +260,9 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
         if [ "$ENABLE_MULTILIB" = "yes" ]; then
         cat >> /mnt/etc/pacman.conf <<'EOF'
 [multilib]
-Include = /etc/pacman.d/mirrorlist-arch
+Include = /etc/pacman.d/mirrorlist
 EOF
+        fi
     info "Bootstrapping Visnux..."
     pacstrap /mnt base base-devel linux linux-firmware sof-firmware
 
