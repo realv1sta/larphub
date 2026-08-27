@@ -257,8 +257,12 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
 
     info "Ranking Arch mirrors..."
     rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist
-
-    info "Installing Arch base and the kernel..."
+        if [ "$ENABLE_MULTILIB" = "yes" ]; then
+        cat >> /mnt/etc/pacman.conf <<'EOF'
+[multilib]
+Include = /etc/pacman.d/mirrorlist-arch
+EOF
+    info "Bootstrapping Visnux..."
     pacstrap /mnt base base-devel linux linux-firmware sof-firmware
 
 else
