@@ -276,7 +276,7 @@ ParallelDownloads = 12
 SigLevel = Never
 
 [system]
-Server = https://mirrors.rit.edu/artixlinux/\$repo/os/\$arch
+Server = https://mirror.netcologne.de/artix-linux/$repo/os/$arch
 EOF
 
     info "Installing keyrings..."
