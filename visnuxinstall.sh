@@ -259,10 +259,6 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     pacman -Sy archlinux-keyring --noconfirm
     pacman-key --init
     pacman-key --populate archlinux
-    pacman -Sy rate-mirrors --noconfirm
-
-    info "Ranking Arch mirrors..."
-    rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist
         if [ "$ENABLE_MULTILIB" = "yes" ]; then
         mkdir /mnt/etc -p
         cp /etc/pacman.conf /mnt/etc/pacman.conf
@@ -273,7 +269,6 @@ EOF
         fi
     info "Bootstrapping Visnux..."
     pacstrap /mnt base base-devel linux linux-firmware sof-firmware
-
 else
     info "Preparing Artix repositories for pacstrap..."
     info "Configuring Arch repositories on live host..."
