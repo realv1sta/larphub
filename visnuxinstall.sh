@@ -256,7 +256,8 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     pacman -Sy archlinux-keyring rate-mirrors --noconfirm
 
     info "Ranking Arch mirrors..."
-    rate-mirrors arch | grep "https://" > /etc/pacman.d/mirrorlist
+    # FIX: Added --allow-root
+    rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist
 
     info "Installing Arch base and the kernel..."
     pacstrap /mnt base base-devel linux linux-firmware sof-firmware
@@ -276,7 +277,7 @@ ParallelDownloads = 12
 SigLevel = Never
 
 [system]
-Server = https://mirror.netcologne.de/artix-linux/system/os/x86_64
+Server = https://netcologne.de
 EOF
 
     info "Installing keyrings..."
@@ -284,13 +285,18 @@ EOF
     
     info "Initializing local cryptographic keys..."
     pacman-key --init
+    
     if [ ! -f /usr/share/pacman/keyrings/arch.gpg ] && [ -f /usr/share/pacman/keyrings/archlinux.gpg ]; then
         cp /usr/share/pacman/keyrings/archlinux.gpg /usr/share/pacman/keyrings/arch.gpg
     fi
+    
     pacman-key --populate artix arch
+    
     info "Ranking Artix mirrors..."
     mkdir -p /etc/pacman.d
-    rate-mirrors artix | grep -v "artixlinux.org" | grep "https://" > /etc/pacman.d/mirrorlist
+    # FIX: Added --allow-root
+    rate-mirrors --allow-root artix | grep -v "artixlinux.org" | grep "https://" > /etc/pacman.d/mirrorlist
+
     ARTIX_CONF="/tmp/visnux-artix.conf"
     cat > "$ARTIX_CONF" <<EOF
 [options]
@@ -325,7 +331,9 @@ EOF
     info "Copying mirrorlists to the target system..."
     mkdir -p /mnt/etc/pacman.d
     cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
-    rate-mirrors arch | grep "https://" > /etc/pacman.d/mirrorlist-arch
+    
+    # FIX: Added --allow-root
+    rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist-arch
     cp /etc/pacman.d/mirrorlist-arch /mnt/etc/pacman.d/mirrorlist-arch
 
     info "Applying pacman cosmetic tweaks to chroot..."
@@ -355,7 +363,6 @@ fi
 
 info "Enabling parallel downloads inside chroot..."
 sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /mnt/etc/pacman.conf
-
 # =============================================================================
 # Fstab
 # =============================================================================
