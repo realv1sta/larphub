@@ -277,6 +277,8 @@ SigLevel = Never
 
 [system]
 Server = https://mirror.netcologne.de/artix-linux/system/os/x86_64
+[galaxy]
+Server = https://mirror.netcologne.de/artix-linux/galaxy/os/x86_64
 EOF
 
     info "Installing keyrings..."
