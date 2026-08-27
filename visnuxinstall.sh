@@ -280,7 +280,7 @@ Server = https://mirror.netcologne.de/artix-linux/system/os/x86_64
 EOF
 
     info "Installing keyrings..."
-    pacman --config "$ARTIX_BOOTSTRAP_CONF" -Sy --noconfirm artix-keyring
+    pacman --config "$ARTIX_BOOTSTRAP_CONF" -Sy --noconfirm artix-keyring artix-archlinux-support
     pacman-key --init
     pacman-key --populate artix arch
     
