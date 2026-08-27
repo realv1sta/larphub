@@ -277,19 +277,20 @@ SigLevel = Never
 
 [system]
 Server = https://mirror.netcologne.de/artix-linux/system/os/x86_64
-[galaxy]
-Server = https://mirror.netcologne.de/artix-linux/galaxy/os/x86_64
 EOF
 
     info "Installing keyrings..."
-    pacman --config "$ARTIX_BOOTSTRAP_CONF" -Sy --noconfirm artix-keyring artix-archlinux-support
-    pacman-key --init
-    pacman-key --populate artix arch
+    pacman --config "$ARTIX_BOOTSTRAP_CONF" -Sy --noconfirm artix-keyring
     
+    info "Initializing local cryptographic keys..."
+    pacman-key --init
+    if [ ! -f /usr/share/pacman/keyrings/arch.gpg ] && [ -f /usr/share/pacman/keyrings/archlinux.gpg ]; then
+        cp /usr/share/pacman/keyrings/archlinux.gpg /usr/share/pacman/keyrings/arch.gpg
+    fi
+    pacman-key --populate artix arch
     info "Ranking Artix mirrors..."
     mkdir -p /etc/pacman.d
     rate-mirrors artix | grep -v "artixlinux.org" | grep "https://" > /etc/pacman.d/mirrorlist
-
     ARTIX_CONF="/tmp/visnux-artix.conf"
     cat > "$ARTIX_CONF" <<EOF
 [options]
@@ -321,9 +322,11 @@ EOF
 
     pacstrap -C "$ARTIX_CONF" /mnt base base-devel linux linux-firmware sof-firmware artix-keyring $INIT_PKGS
 
-    info "Copying mirrorlist to the target system..."
+    info "Copying mirrorlists to the target system..."
     mkdir -p /mnt/etc/pacman.d
     cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
+    rate-mirrors arch | grep "https://" > /etc/pacman.d/mirrorlist-arch
+    cp /etc/pacman.d/mirrorlist-arch /mnt/etc/pacman.d/mirrorlist-arch
 
     info "Applying pacman cosmetic tweaks to chroot..."
     sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /mnt/etc/pacman.conf
@@ -333,20 +336,23 @@ EOF
     arch-chroot /mnt pacman -Sy --noconfirm artix-archlinux-support
     arch-chroot /mnt pacman-key --populate archlinux
 
-    info "Adding Arch's extra repository..."
+    info "Adding Arch repositories to pacman.conf..."
     cat >> /mnt/etc/pacman.conf <<'EOF'
 
 [extra]
 Include = /etc/pacman.d/mirrorlist-arch
 EOF
+
     if [ "$ENABLE_MULTILIB" = "yes" ]; then
         cat >> /mnt/etc/pacman.conf <<'EOF'
+
 [multilib]
 Include = /etc/pacman.d/mirrorlist-arch
 EOF
     fi
 
 fi
+
 info "Enabling parallel downloads inside chroot..."
 sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /mnt/etc/pacman.conf
 
