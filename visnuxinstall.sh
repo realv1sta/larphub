@@ -123,11 +123,11 @@ if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
 
     echo ""
     ask "Do you want to use an already existing visnux.conf?"
-    ask "  1) Yes - located in this folder as visnux.conf"
-    ask "  2) No  - generate one from your answers below"
+    ask "  1) No  - generate one from your answers below"
+    ask "  2) Yes - located in this folder as visnux.conf"
     read -rp "  Choice [1/2]: " CONF_CHOICE
     case "$CONF_CHOICE" in
-        1)
+        2)
             SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd)"
             EXISTING_CONF="$SCRIPT_DIR/visnux.conf"
             [ -f "$EXISTING_CONF" ] || die "No visnux.conf found at $EXISTING_CONF"
