@@ -316,7 +316,7 @@ EOF
     
     info "Ranking Artix mirrors..."
     mkdir -p /etc/pacman.d
-    rate-mirrors --allow-root artix | grep -v "arkhost" | grep -v "garr.it" | grep "https://" > /etc/pacman.d/mirrorlist
+    rate-mirrors --allow-root artix | grep -v "arkhost" | grep -v "garr.it" > /etc/pacman.d/mirrorlist
 
     ARTIX_CONF="/tmp/visnux-artix.conf"
     cat > "$ARTIX_CONF" <<EOF
@@ -353,7 +353,7 @@ EOF
     mkdir -p /mnt/etc/pacman.d
     cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
     
-    rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist-arch
+    rate-mirrors --allow-root arch > /etc/pacman.d/mirrorlist-arch
     cp /etc/pacman.d/mirrorlist-arch /mnt/etc/pacman.d/mirrorlist-arch
 
     info "Applying pacman cosmetic tweaks to chroot..."
