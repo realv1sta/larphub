@@ -256,7 +256,6 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     pacman -Sy archlinux-keyring rate-mirrors --noconfirm
 
     info "Ranking Arch mirrors..."
-    # FIX: Added --allow-root
     rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist
 
     info "Installing Arch base and the kernel..."
@@ -264,6 +263,19 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
 
 else
     info "Preparing Artix repositories for pacstrap..."
+    info "Configuring Arch repositories on live host..."
+    if [ ! -f /etc/pacman.d/mirrorlist-arch ] || [ ! -s /etc/pacman.d/mirrorlist-arch ]; then
+        mkdir -p /etc/pacman.d
+        echo "Server = https://netcologne.de\$repo/os/\$arch" > /etc/pacman.d/mirrorlist-arch
+    fi
+    if ! grep -q '^\[extra\]$' /etc/pacman.conf; then
+        cat >> /etc/pacman.conf <<'EOF'
+
+[extra]
+Include = /etc/pacman.d/mirrorlist-arch
+EOF
+    fi
+
     info "Installing mirror ranking utilities on host..."
     pacman -Sy --noconfirm archlinux-keyring rate-mirrors
 
@@ -294,7 +306,6 @@ EOF
     
     info "Ranking Artix mirrors..."
     mkdir -p /etc/pacman.d
-    # FIX: Added --allow-root
     rate-mirrors --allow-root artix | grep -v "artixlinux.org" | grep "https://" > /etc/pacman.d/mirrorlist
 
     ARTIX_CONF="/tmp/visnux-artix.conf"
@@ -332,7 +343,6 @@ EOF
     mkdir -p /mnt/etc/pacman.d
     cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
     
-    # FIX: Added --allow-root
     rate-mirrors --allow-root arch | grep "https://" > /etc/pacman.d/mirrorlist-arch
     cp /etc/pacman.d/mirrorlist-arch /mnt/etc/pacman.d/mirrorlist-arch
 
@@ -363,6 +373,7 @@ fi
 
 info "Enabling parallel downloads inside chroot..."
 sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /mnt/etc/pacman.conf
+
 # =============================================================================
 # Fstab
 # =============================================================================
