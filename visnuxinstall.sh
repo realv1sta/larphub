@@ -254,7 +254,7 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /etc/pacman.conf
 
     info "Installing keyrings and mirror ranking utilities on host..."
-    pacman -Sy archlinux-keyring
+    pacman -Sy archlinux-keyring --noconfirm
     pacman-key --init
     pacman-key --populate archlinux
     pacman -Sy rate-mirrors --noconfirm
