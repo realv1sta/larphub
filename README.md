@@ -69,13 +69,6 @@ Recognition for the people who make this repo worth starring.
     <td>Credit: <a href="https://github.com/beamyyl"><b>@beamyyl</b></a></td>
   </tr>
 </table>
-<table>
-  <tr>
-    <td>✍🏻</td>
-    <td><b>Visnux' official installer</b> <code>visnuxinstall.sh</code></td>
-    <td>Credit: <a href="https://github.com/beamyyl"><b>@beamyyl</b></a></td>
-  </tr>
-</table>
 
 > Dropped a wallpaper or shipped something worth bragging about? Ping us in the Discord or open a PR to get added here.
 
