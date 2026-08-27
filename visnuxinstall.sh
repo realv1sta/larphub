@@ -312,7 +312,7 @@ EOF
     
     info "Ranking Artix mirrors..."
     mkdir -p /etc/pacman.d
-    rate-mirrors --allow-root artix | grep -v "artixlinux.org" | grep -v "arkhost" | grep -v "garr.it" | grep "https://" > /etc/pacman.d/mirrorlist
+    rate-mirrors --allow-root artix | grep -v "arkhost" | grep -v "garr.it" | grep "https://" > /etc/pacman.d/mirrorlist
 
     ARTIX_CONF="/tmp/visnux-artix.conf"
     cat > "$ARTIX_CONF" <<EOF
