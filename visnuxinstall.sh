@@ -253,7 +253,7 @@ if [ "$INIT_SYSTEM" = "systemd" ]; then
     info "Enabling parallel downloads on host..."
     sed -i 's/^#*ParallelDownloads = .*/ParallelDownloads = 12/' /etc/pacman.conf
 
-    info "Installing keyrings and mirror ranking utilities on host..."
+    info "Installing keyrings on host..."
     pacman-key --init
     pacman-key --populate archlinux
     pacman -Sy archlinux-keyring --noconfirm
@@ -284,7 +284,9 @@ Include = /etc/pacman.d/mirrorlist-arch
 EOF
     fi
 
-    info "Installing mirror ranking utilities on host..."
+    info "Installing mirror ranking utilities on host..."pacman-key --init
+    pacman-key --init
+    pacman-key --populate archlinux
     pacman -Sy --noconfirm archlinux-keyring rate-mirrors
 
     ARTIX_BOOTSTRAP_CONF="/tmp/visnux-artix-bootstrap.conf"
