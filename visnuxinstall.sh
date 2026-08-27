@@ -114,8 +114,9 @@ echo ""
 
 echo -e "${CYAN}[INPUT]${NC} Do you want to install Visnux in a declarative way?"
 echo "  This installs VPK and uses /etc/visnux/visnux.conf."
-echo "  [y] Declarative (VPK)"
-echo "  [n] Traditional / imperative installer"
+echo "  !! If you will use declaratives, you *must* enable multilib (next question)."
+echo "  y) Declarative (VPK)"
+echo "  n) Traditional / imperative installer"
 read -rp "  Choice [y/N]: " DECLARATIVE_CHOICE
 USE_EXISTING_CONF="no"
 if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
@@ -142,6 +143,22 @@ if [[ "$DECLARATIVE_CHOICE" =~ ^[Yy]$ ]]; then
 else
     DECLARATIVE_MODE="no"
 fi
+echo ""
+
+# =============================================================================
+# Multilib
+# =============================================================================
+while true; do
+    ask "Enable the multilib repository (for 32-bit packages)? [Y/n]"
+    read -rp "  Choice: " MULTILIB_CHOICE
+    if [[ "$MULTILIB_CHOICE" =~ ^[Nn]$ ]]; then
+        ENABLE_MULTILIB="no"; break
+    elif [[ "$MULTILIB_CHOICE" =~ ^[Yy]$ ]] || [ -z "$MULTILIB_CHOICE" ]; then
+        ENABLE_MULTILIB="yes"; break
+    else
+        warn "Please enter Y or n."
+    fi
+done
 echo ""
 
 # =============================================================================
@@ -193,22 +210,6 @@ else
     done
     echo ""
 fi
-
-# =============================================================================
-# Multilib
-# =============================================================================
-while true; do
-    ask "Enable the multilib repository (for 32-bit packages)? [Y/n]"
-    read -rp "  Choice: " MULTILIB_CHOICE
-    if [[ "$MULTILIB_CHOICE" =~ ^[Nn]$ ]]; then
-        ENABLE_MULTILIB="no"; break
-    elif [[ "$MULTILIB_CHOICE" =~ ^[Yy]$ ]] || [ -z "$MULTILIB_CHOICE" ]; then
-        ENABLE_MULTILIB="yes"; break
-    else
-        warn "Please enter Y or n."
-    fi
-done
-echo ""
 
 # =============================================================================
 # System configuration
